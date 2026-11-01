@@ -121,8 +121,14 @@ listed in `ignore`, such as `lm_head`, retain their unquantized implementation.
 The compressed-tensors ND weight layout is separate from the ModelSlim NZ
 layout. ModelSlim checkpoints continue to use `--quantization ascend`; omit
 that option for LLM-Compressor checkpoints so the model metadata selects
-`compressed-tensors`. CANN's 310P fused operator does not accept a bias tensor;
-when a linear layer has a bias, the scheme adds it after the fused operation.
+`compressed-tensors`. For compatibility with the CANN 9.1 310P operator's
+null-bias requirement, the scheme adds linear bias after the fused operation.
+
+On current main, ordinary generation and serving were verified with Model
+Runner V2. For log-likelihood evaluation, set `VLLM_USE_V2_MODEL_RUNNER=0`:
+the existing 310P V2 sampler does not support logprobs or logits processors.
+See the [Qwen3 Dense validation results](../../tutorials/models/Qwen3-Dense.md#llm-compressor-qwen3-32b-w8a8-on-310p)
+for the tested stack, accuracy, request-level performance and memory snapshots.
 
 ### 3. Native FP8 checkpoints (no quantization step needed)
 
