@@ -378,6 +378,93 @@ Expected result: HTTP 200 with a JSON response containing the `choices` field wi
 
 ## 7 Accuracy Evaluation
 
+### LLM-Compressor Qwen3-32B-W8A8 on 310P
+
+The `compressed-tensors` path supports dense symmetric INT8 per-channel
+weights with dynamic per-token INT8 activations and FP16 model execution.
+Do not pass `--quantization ascend` for an LLM-Compressor checkpoint.
+ModelSlim continues to use its existing quantization configuration and NZ
+weight layout; compressed-tensors uses a separate contiguous NK scheme.
+
+The following real-weight eager configuration was tested on one Ascend310P3
+board with **two devices**, using CANN 9.1.0, driver 25.5.0, PyTorch 2.10.0,
+torch-npu 2.10.0.post4, vLLM 0.23.0 and vLLM Ascend 0.23.0.post1 with this
+feature backported. Current main has separate CPU unit-test coverage; the
+release-stack measurements do not establish main-branch NPU compatibility.
+
+```bash
+export ASCEND_RT_VISIBLE_DEVICES=0,1
+vllm serve ramblingpolymath/Qwen3-32B-W8A8 \
+    --revision c97ec599f6d17967bb1049180d81d8a3e959fc97 \
+    --served-model-name qwen3-w8a8 \
+    --dtype float16 --tensor-parallel-size 2 \
+    --max-model-len 2048 --max-num-seqs 1 \
+    --max-num-batched-tokens 2048 --gpu-memory-utilization 0.8 \
+    --additional-config '{"enable_flashcomm1": false}' \
+    --enforce-eager --port 8000
+```
+
+Offline generation returned `56` and `Paris` for the arithmetic and capital
+smoke prompts. `/v1/models` and four chat requests returned HTTP 200 with
+non-empty output. These checks establish inference functionality, rather
+than benchmark accuracy.
+
+| Evaluation | Configuration | Result |
+| --- | --- | --- |
+| MMLU computer_security | Full 100-question test split, 0-shot, raw completion prompt, eager TP2/FP16 | 86/100 |
+| Streaming TPOT | Three serial requests, 92–96 output tokens, same eager configuration | 0.5982–0.5986 s/token |
+| Streaming output throughput | Includes HTTP, scheduling and generation | 1.63–1.65 tokens/s |
+| Device memory snapshot | After the chat smoke requests; device 0/device 1 totals | 27344/27477 MB |
+
+`FULL_DECODE_ONLY` graph execution with one capture size `[1]` was also
+validated on TP2, including HTTP 200 chat and streaming responses. To
+reproduce that run, set `TORCHINDUCTOR_COMPILE_THREADS=1` and replace
+`--enforce-eager` with
+`--compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[1]}'`.
+All other model, batching and concurrency settings remain the same.
+
+| Mode | Streaming TPOT | Output throughput | Device 0/device 1 memory snapshot |
+| --- | --- | --- | --- |
+| Eager | 0.5982–0.5986 s/token | 1.63–1.65 tokens/s | 27344/27477 MB |
+| Decode graph `[1]` | 0.6019–0.6021 s/token | 1.62–1.64 tokens/s | 27511/27646 MB |
+
+These are three serial streaming requests per mode on the same board and
+software versions in separate runs. They demonstrate graph compatibility,
+without showing a performance gain for this ND path. Graph capture reported
+4 seconds and 0.27 GiB. Other capture sizes were not validated in this test.
+TTFT is measured to the first non-empty streaming delta. TPOT is estimated
+from the first and last non-empty deltas divided by completion tokens minus
+one; template delimiters are included in the generated token count.
+
+The MMLU score is uncorrected. The validation driver verified that all four
+answer continuations are single tokens and preserve the prompt tokenization
+boundary, so restricted greedy choice selection has the same argmax as
+continuation log-likelihood. The test parquet SHA256 was
+`a6ad5774acf5133ac88cf1bb066c60db8668abee2d6a724cf2f9dfa7cb4f103d`.
+The opt-in model config is
+`tests/e2e/models/configs/Qwen3-32B-W8A8-CompressedTensors-310P.yaml`.
+For the full repository evaluation flow, select this config with
+`pytest -sv tests/e2e/models/test_lm_eval_correctness.py --config tests/e2e/models/configs/Qwen3-32B-W8A8-CompressedTensors-310P.yaml --tp-size 2`.
+The reported score above used the independent equivalent-choice driver,
+rather than this full pytest flow.
+
+An independent Transformers 4.57.6 / compressed-tensors 0.20.1 CPU FP16
+fake-quant reference loaded the same checkpoint with a 12 GiB CPU memory
+budget and disk offload. Both smoke outputs matched exactly. On the fixed
+MMLU subset at indices 0, 10, ..., 90, all 10 answer choices matched the NPU
+run, including two questions both implementations answered incorrectly.
+This is a ten-question alignment check, not a full 100-question reference
+score or an unquantized-model accuracy comparison.
+
+The memory values are snapshots, not peak allocation measurements. The
+configured context limit is 2048 tokens, with MMLU prompts of 44–221 tokens;
+these runs do not establish maximum-length inference. The reported KV-cache
+allocation capacity does not establish 40960-token inference or eight concurrent
+maximum-length requests. Static W8A8, W4A8, FP8/MXFP, BF16 activation and
+quantized MoE are outside this compressed-tensors support scope. See the
+[quantization guide](../../user_guide/feature_guide/quantization.md) for the
+capability matrix.
+
 ### 7.1 Using AISBench
 
 For setup details, including installation, dataset download, and configuration, please refer to [Using AISBench](../../developer_guide/evaluation/using_ais_bench.md).

@@ -100,7 +100,29 @@ python3 w8a8_int8_dynamic_moe.py
 
 For more content, refer to the [official examples](https://github.com/vllm-project/llm-compressor/tree/main/examples).
 
-The quantization types currently supported by LLM-Compressor can be viewed in the `vllm_ascend/quantization/compressed_tensors_config.py` file.
+The quantization types currently supported by LLM-Compressor can be viewed in the `vllm_ascend/quantization/configs/compressed_tensors_config.py` file.
+
+#### Atlas 300I DUO (310P) compressed-tensors
+
+The 310P configuration supports dense INT8 W8A8 checkpoints with static,
+symmetric per-channel weights and dynamic, symmetric per-token activations.
+Use `float16` model activations. The checkpoint must use `int-quantized`
+storage; a per-group format overrides the global format. Unquantized layers
+listed in `ignore`, such as `lm_head`, retain their unquantized implementation.
+
+| Configuration | 310P compressed-tensors behavior |
+| --- | --- |
+| Dense W8A8 INT8, per-channel weights, dynamic per-token activations, FP16 | Uses contiguous NK weights and `npu_quant_matmul_dequant` |
+| BF16 model activations | Rejected by the 310P activation dtype check |
+| Static W8A8, W4A8, FP8, MXFP, or quantized MoE | Rejected before scheme construction |
+| Mixed integer/floating-point weight and activation types | Rejected during quantization type detection |
+| Missing local 310P scheme | Raises an explicit error without selecting the standard hardware backend |
+
+The compressed-tensors ND weight layout is separate from the ModelSlim NZ
+layout. ModelSlim checkpoints continue to use `--quantization ascend`; omit
+that option for LLM-Compressor checkpoints so the model metadata selects
+`compressed-tensors`. CANN's 310P fused operator does not accept a bias tensor;
+when a linear layer has a bias, the scheme adds it after the fused operation.
 
 ### 3. Native FP8 checkpoints (no quantization step needed)
 
