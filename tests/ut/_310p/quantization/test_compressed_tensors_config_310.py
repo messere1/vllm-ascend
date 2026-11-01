@@ -15,6 +15,7 @@
 
 from copy import deepcopy
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -51,7 +52,7 @@ class TestAscendCompressedTensorsConfig310(TestBase):
         self.assertIsInstance(method, UnquantizedLinearMethod)
 
     def test_per_group_format_overrides_global_format(self):
-        metadata = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
+        metadata: dict[str, Any] = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
         metadata["format"] = "mixed-precision"
         config = AscendCompressedTensorsConfig310.from_config(metadata)
         layer = MagicMock(spec=RowParallelLinear)
@@ -59,7 +60,7 @@ class TestAscendCompressedTensorsConfig310(TestBase):
         self.assertIsInstance(scheme, AscendCompressedTensorsW8A8DynamicLinearMethod310)
 
     def test_fused_qkv_targets_select_310p_scheme(self):
-        metadata = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
+        metadata: dict[str, Any] = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
         prefix = "model.layers.0.self_attn."
         metadata["config_groups"]["group_0"]["targets"] = [prefix + name for name in ("q_proj", "k_proj", "v_proj")]
         config = AscendCompressedTensorsConfig310.from_config(metadata)
@@ -69,7 +70,7 @@ class TestAscendCompressedTensorsConfig310(TestBase):
         self.assertIsInstance(scheme, AscendCompressedTensorsW8A8DynamicLinearMethod310)
 
     def test_partial_fused_ignore_rejected(self):
-        metadata = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
+        metadata: dict[str, Any] = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
         metadata["ignore"] = ["model.layers.0.self_attn.q_proj"]
         config = AscendCompressedTensorsConfig310.from_config(metadata)
         config.packed_modules_mapping = {"qkv_proj": ["q_proj", "k_proj", "v_proj"]}
@@ -100,7 +101,7 @@ class TestAscendCompressedTensorsConfig310(TestBase):
         )
         for mutation in mutations:
             with self.subTest(mutation=mutation):
-                metadata = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
+                metadata: dict[str, Any] = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
                 group = metadata["config_groups"]["group_0"]
                 for target, values in mutation.items():
                     group[target].update(values)

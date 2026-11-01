@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import torch
@@ -91,7 +92,7 @@ class TestAscendCompressedTensorsQuanType(TestBase):
                     with self.subTest(
                         num_bits=num_bits, dynamic=dynamic, weight_type=weight_type, input_type=input_type
                     ):
-                        metadata = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
+                        metadata: dict[str, Any] = deepcopy(COMPRESSED_TENSORS_W8A8_CONFIG)
                         group = metadata["config_groups"]["group_0"]
                         group["weights"].update(num_bits=num_bits, type=weight_type)
                         group["input_activations"].update(
